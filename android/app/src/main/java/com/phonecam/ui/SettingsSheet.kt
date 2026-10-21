@@ -66,6 +66,20 @@ fun SettingsSheet(state: UiState, onApply: ((CameraSettings) -> CameraSettings) 
                     }
                 }
             }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var hidden by remember(state.lenses) { androidx.compose.runtime.mutableStateOf(com.phonecam.Streamer.hasHiddenModes(ctx)) }
+            if (hidden) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Some 60 fps modes are hidden because this phone's camera stopped responding in them.",
+                    style = MaterialTheme.typography.bodySmall, color = Palette.TextDim,
+                )
+                Spacer(Modifier.height(6.dp))
+                Choice("Show all modes", false, sub = "try them again") {
+                    com.phonecam.Streamer.showAllModes(ctx)
+                    hidden = false
+                }
+            }
 
             Section("Codec")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

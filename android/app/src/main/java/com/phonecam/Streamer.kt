@@ -85,7 +85,6 @@ object Streamer {
 
     private var thermalListener: android.os.PowerManager.OnThermalStatusChangedListener? = null
     private var recoveries = 0
-    private var lastHealthyAt = 0L
 
     private var lastSentFrames = 0L
     private var lastSentBytes = 0L
@@ -299,7 +298,7 @@ object Streamer {
                 }
             }
             lastSentFrames = frames; lastSentBytes = bytes; lastStatsAt = now
-            if (_state.value.phase != Phase.ERROR && _state.value.live.fps > 0) lastHealthyAt = now
+            if (_state.value.phase != Phase.ERROR && _state.value.live.fps > 0) recoveries = 0
             s.sendState(stateJson())
         }
         h.postDelayed(::tick, 1000)
@@ -330,6 +329,20 @@ object Streamer {
         handler?.postDelayed({ _state.update { if (it.error == message) it.copy(error = null) else it } }, 10_000)
     }
 
+    /** True when some modes are hidden as broken, so the UI can offer [showAllModes]. */
+    fun hasHiddenModes(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_BROKEN_MODES, emptySet()).orEmpty().isNotEmpty()
+
+    /** Forgets every mode marked broken, e.g. after a system update fixed the camera. */
+    fun showAllModes(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_BROKEN_MODES).apply()
+        handler?.post {
+            val lenses = runCatching { CameraCatalog.load(ctx) }.getOrNull() ?: return@post
+            _state.update { it.copy(lenses = lenses) }
+            server?.sendState(hello())
+        }
+    }
+
     private fun modeKey(lensId: String, m: com.phonecam.camera.VideoMode) = "$lensId:${m.width}x${m.height}@${m.fps}"
 
     private fun withoutBrokenModes(ctx: Context, lenses: List<Lens>): List<Lens> {
@@ -353,12 +366,14 @@ object Streamer {
     private fun cameraFailed(message: String) {
         fail(message)
         val h = handler ?: return
-        if (System.nanoTime() - lastHealthyAt > 60_000_000_000L) recoveries = 0
+        // Counts failures since the stream last ran (tick resets it). A crashed
+        // camera service takes 5-10 s to come back, so the waits grow: 2, 4, 6,
+        // 8 and 10 s, about 30 s in all before giving up.
         if (recoveries >= 5) return
         recoveries++
         val hot = _state.value.thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE
         if (hot) coolDown(reopen = false)
-        h.postDelayed({ if (handler != null && _state.value.phase == Phase.ERROR) openPipeline() }, if (hot) 15_000L else 2_000L)
+        h.postDelayed({ if (handler != null && _state.value.phase == Phase.ERROR) openPipeline() }, if (hot) 15_000L else 2_000L * recoveries)
     }
 
     /** Steps down to the cheapest good-looking mode: 1080p30, manual controls intact. */
