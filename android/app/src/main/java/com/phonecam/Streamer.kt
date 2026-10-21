@@ -109,7 +109,7 @@ object Streamer {
                 check(lenses.isNotEmpty()) { "No usable camera found" }
                 val settings = CameraSettings.load(ctx).sanitized(lenses)
                 _state.update { it.copy(lenses = lenses, settings = settings) }
-                logCapabilities(lenses)
+                logCapabilities(ctx, lenses)
                 val s = StreamServer(
                     context = ctx,
                     hello = ::hello,
@@ -202,7 +202,10 @@ object Streamer {
         }
         h.post {
             val current = _state.value.settings
+            // Many HALs ignore exposure compensation while AE is locked, so the EV
+            // slider seemed dead with "Lock exposure" on. Moving EV unlocks AE.
             val next = change(current).sanitized(_state.value.lenses)
+                .let { if (it.ev != current.ev && it.aeLock && current.aeLock) it.copy(aeLock = false) else it }
             if (next == current) return@post
             _state.update { it.copy(settings = next, throttled = it.throttled && !next.needsRestart(current)) }
             appContext?.let { CameraSettings.save(it, next) }
@@ -458,7 +461,17 @@ object Streamer {
             .put("error", st.error ?: JSONObject.NULL)
     }
 
-    private fun logCapabilities(lenses: List<Lens>) {
+    private fun logCapabilities(ctx: Context, lenses: List<Lens>) {
         lenses.forEach { Log.i(TAG, "Lens ${it.id} ${it.name}: ${it.toJson()}") }
+        // Vendor effects the phone's own pipeline can apply (bokeh, face retouch,
+        // HDR, night) at no cost to the PC; logged to judge a portrait mode.
+        if (Build.VERSION.SDK_INT >= 31) {
+            val manager = ctx.getSystemService(android.hardware.camera2.CameraManager::class.java)
+            val names = mapOf(0 to "AUTOMATIC", 1 to "FACE_RETOUCH", 2 to "BOKEH", 3 to "HDR", 4 to "NIGHT")
+            lenses.forEach { lens ->
+                val ext = runCatching { manager.getCameraExtensionCharacteristics(lens.id).supportedExtensions }.getOrDefault(emptyList())
+                Log.i(TAG, "Extensions ${lens.id} ${lens.name}: ${ext.map { names[it] ?: "#$it" }.ifEmpty { listOf("none") }}")
+            }
+        }
     }
 }
