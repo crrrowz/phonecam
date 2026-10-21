@@ -240,6 +240,9 @@ object Streamer {
         relay?.release(); relay = null
         baseRotation = -1
         encoder?.release(); encoder = null
+        // The old session is closed: until the new one reports, there are no frames.
+        // (tick() treats a non-zero fps as "recovered", so it must not linger.)
+        _state.update { it.copy(live = com.phonecam.camera.LiveValues()) }
         try {
             val codec = if (VideoEncoder.supports(st.settings.codec, mode.width, mode.height)) st.settings.codec
                 else com.phonecam.camera.Codec.H264
@@ -264,7 +267,6 @@ object Streamer {
             preview?.let { r.setPreview(it, previewSize.first, previewSize.second) }
             _state.update { it.copy(encoder = "${enc.name} · ${codec.name}") }
             updateRotation()
-            _state.update { it.copy(live = com.phonecam.camera.LiveValues()) }
             engine?.open(lens, st.settings, r.cameraSurface)
             Log.i(TAG, "Pipeline ${mode.label} on ${lens.name} (${lens.id})")
             if (mode.highSpeed) {
@@ -302,7 +304,15 @@ object Streamer {
                 }
             }
             lastSentFrames = frames; lastSentBytes = bytes; lastStatsAt = now
-            if (_state.value.phase != Phase.ERROR && _state.value.live.fps > 0) recoveries = 0
+            if (_state.value.live.fps > 0) {
+                recoveries = 0
+                // Frames are flowing, so a start error is history, whichever path
+                // recovered (retry, settings change, thermal step-down). Seen on a
+                // TECNO CK7n: streaming at 27 fps under a stale "Cannot start" banner.
+                _state.update {
+                    if (it.phase == Phase.ERROR) it.copy(error = null, phase = if (it.pc != null) Phase.STREAMING else Phase.WAITING) else it
+                }
+            }
             s.sendState(stateJson())
         }
         h.postDelayed(::tick, 1000)
