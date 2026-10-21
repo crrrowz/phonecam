@@ -261,7 +261,10 @@ object Streamer {
             Log.i(TAG, "Pipeline ${mode.label} on ${lens.name} (${lens.id})")
         } catch (e: Exception) {
             Log.e(TAG, "Pipeline failed", e)
-            fail("Cannot start ${mode.label}: ${e.message}")
+            // The camera service restarts on its own after a crash or while another
+            // app holds the camera: retry like a camera lost mid-stream.
+            if (e is android.hardware.camera2.CameraAccessException) cameraFailed("Cannot start ${mode.label}: ${e.message}")
+            else fail("Cannot start ${mode.label}: ${e.message}")
         }
     }
 
