@@ -15,7 +15,7 @@
 
 ## 🔭 Next
 
-- [ ] Media Foundation virtual camera (Windows 11) for apps that only use Media Foundation
+- [ ] Media Foundation virtual camera (Windows 11) for apps that only use Media Foundation (Windows Camera, Discord, Zoom, Teams): see the [plan](docs/plans/media-foundation-camera.md)
 - [ ] Microphone streaming
 - [ ] One-click USB mode (`adb forward`, tethering as fallback): see the [plan](docs/plans/usb-connection.md)
 - [ ] Real 60 fps on Samsung Exynos phones: constrained high-speed sessions never deliver frames on a Galaxy S21+ (all lenses), so those modes are detected and hidden. Find the session setup Samsung's HAL accepts
