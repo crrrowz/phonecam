@@ -59,6 +59,9 @@ object Streamer {
     private const val TAG = "PhoneCam.Streamer"
     private const val PREFS = "phonecam.connection"
     private const val KEY_PC_ADDRESS = "pc_address"
+    private const val KEY_BROKEN_MODES = "broken_modes"
+    /** A working high-speed session delivers frames well within this. */
+    private const val HIGH_SPEED_GRACE_MS = 4000L
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
@@ -88,6 +91,8 @@ object Streamer {
     private var lastSentBytes = 0L
     private var lastStatsAt = 0L
     @Volatile private var dialing = false
+    /** Bumped by every pipeline start, so a delayed check knows whether it is stale. */
+    private var pipelineId = 0
 
     fun start(context: Context) {
         if (thread != null) return
@@ -101,7 +106,7 @@ object Streamer {
         _state.update { it.copy(phase = Phase.STARTING, error = null, address = localIpv4(), pcAddress = pcAddress) }
         h.post {
             try {
-                val lenses = CameraCatalog.load(ctx)
+                val lenses = withoutBrokenModes(ctx, CameraCatalog.load(ctx))
                 check(lenses.isNotEmpty()) { "No usable camera found" }
                 val settings = CameraSettings.load(ctx).sanitized(lenses)
                 _state.update { it.copy(lenses = lenses, settings = settings) }
@@ -257,8 +262,15 @@ object Streamer {
             preview?.let { r.setPreview(it, previewSize.first, previewSize.second) }
             _state.update { it.copy(encoder = "${enc.name} · ${codec.name}") }
             updateRotation()
+            _state.update { it.copy(live = com.phonecam.camera.LiveValues()) }
             engine?.open(lens, st.settings, r.cameraSurface)
             Log.i(TAG, "Pipeline ${mode.label} on ${lens.name} (${lens.id})")
+            if (mode.highSpeed) {
+                val id = ++pipelineId
+                h.postDelayed({ if (id == pipelineId) checkHighSpeedStarted(lens, mode) }, HIGH_SPEED_GRACE_MS)
+            } else {
+                pipelineId++
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Pipeline failed", e)
             // The camera service restarts on its own after a crash or while another
@@ -291,6 +303,41 @@ object Streamer {
             s.sendState(stateJson())
         }
         h.postDelayed(::tick, 1000)
+    }
+
+    /**
+     * Some HALs list a high-speed mode they cannot run: a Galaxy S21+ front
+     * camera at 1080p 60 opens, then never delivers a frame, and closing that
+     * session later makes the camera service's watchdog abort it. When a
+     * high-speed mode shows no frames after the grace period, all high-speed
+     * modes of that lens are remembered as broken (they share the session type,
+     * and each failed try costs a camera service restart), dropped from both
+     * UIs, and the stream falls back to 30 fps.
+     */
+    private fun checkHighSpeedStarted(lens: Lens, mode: com.phonecam.camera.VideoMode) {
+        val st = _state.value
+        if (st.phase == Phase.ERROR || st.live.fps > 0f) return
+        val ctx = appContext ?: return
+        Log.w(TAG, "No frames from ${mode.label} on ${lens.name} (${lens.id}); marking its high-speed modes unusable")
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val broken = prefs.getStringSet(KEY_BROKEN_MODES, emptySet()).orEmpty() +
+            lens.modes.filter { it.highSpeed }.map { modeKey(lens.id, it) }
+        prefs.edit().putStringSet(KEY_BROKEN_MODES, broken).apply()
+        val message = "${mode.fps} fps does not work on ${lens.name} on this phone; switched to 30 fps"
+        _state.update { it.copy(lenses = withoutBrokenModes(ctx, it.lenses), error = message) }
+        apply { it.copy(fps = 30) }
+        server?.sendState(hello()) // carries "lenses", so the PC refreshes its mode list
+        handler?.postDelayed({ _state.update { if (it.error == message) it.copy(error = null) else it } }, 10_000)
+    }
+
+    private fun modeKey(lensId: String, m: com.phonecam.camera.VideoMode) = "$lensId:${m.width}x${m.height}@${m.fps}"
+
+    private fun withoutBrokenModes(ctx: Context, lenses: List<Lens>): List<Lens> {
+        val broken = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_BROKEN_MODES, emptySet()).orEmpty()
+        return lenses.map { lens ->
+            val usable = lens.modes.filterNot { modeKey(lens.id, it) in broken }
+            if (usable.isEmpty()) lens else lens.copy(modes = usable)
+        }
     }
 
     private fun fail(message: String) {
