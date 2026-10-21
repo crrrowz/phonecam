@@ -150,6 +150,11 @@ class StreamServer(
         c.queue.offerFirst(out)
     }
 
+    /** Drops the connected PC; the dialer (or the PC's own search) connects again. */
+    fun dropClient() {
+        client?.let(::detach)
+    }
+
     /**
      * Connects to a PC that listens for phones, for when the PC cannot reach
      * the phone (e.g. the phone is behind its own router). The phone stays the

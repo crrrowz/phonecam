@@ -176,6 +176,10 @@ private fun ConnectToPc(state: UiState) {
         Spacer(Modifier.height(6.dp))
         Text(status, style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
     }
+    if (state.pc != null || state.pcAddress != null) {
+        Spacer(Modifier.height(10.dp))
+        Choice("Reconnect", false, sub = "drop the connection and connect again") { com.phonecam.Streamer.reconnect() }
+    }
 }
 
 @Composable

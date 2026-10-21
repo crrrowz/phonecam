@@ -150,6 +150,12 @@ object Streamer {
         _state.update { UiState(lenses = it.lenses, settings = it.settings, pcAddress = it.pcAddress) }
     }
 
+    /** Drops the current PC connection so it is made again from scratch. */
+    fun reconnect() {
+        _state.update { it.copy(dialStatus = null) }
+        server?.dropClient()
+    }
+
     /** Sets the PC to dial, or null to go back to waiting for the PC to connect. */
     fun setPcAddress(context: Context, address: String?) {
         val clean = address?.trim()?.takeIf { it.isNotEmpty() }
