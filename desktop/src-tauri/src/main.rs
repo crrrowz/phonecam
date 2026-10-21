@@ -126,6 +126,39 @@ async fn register_camera_system() -> Result<bool, String> {
     Ok(vcam::system_registered())
 }
 
+/// Answers the `approve` event for a new phone that dialled this PC.
+#[tauri::command]
+fn approve_phone(state: State<AppState>, ok: bool) {
+    if let Some(e) = engine(&state) {
+        e.approve(ok);
+    }
+}
+
+/// Lets phones reach the listening port through Windows Firewall on every
+/// network profile; a cable to the modem is often a "Public" network, where
+/// Windows blocks incoming connections by default (one UAC prompt).
+#[tauri::command]
+async fn allow_firewall() -> Result<(), String> {
+    vcam::run_elevated(windows::core::w!("--allow-firewall"))
+}
+
+/// Elevated helper for `allow_firewall`: one inbound rule for the listening port.
+fn add_firewall_rule() -> bool {
+    use std::os::windows::process::CommandExt;
+    let netsh = |args: &[&str]| {
+        std::process::Command::new("netsh")
+            .args(["advfirewall", "firewall"])
+            .args(args)
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let name = "name=PhoneCam (phones connecting)";
+    netsh(&["delete", "rule", name]);
+    let port = format!("localport={}", proto::LISTEN_PORT);
+    netsh(&["add", "rule", name, "dir=in", "action=allow", "protocol=TCP", &port, "profile=any"])
+}
+
 /// Binary preview packets: `0x10 codec w h fps` for a new stream, `0x11 flags
 /// pts rotation data` per frame. Mirrors the phone protocol so the page can
 /// feed WebCodecs directly.
@@ -207,6 +240,9 @@ fn main() {
             Err(_) => 2,
         });
     }
+    if std::env::args().any(|a| a == "--allow-firewall") {
+        std::process::exit(if add_firewall_rule() { 0 } else { 2 });
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .manage(AppState::default())
@@ -222,7 +258,9 @@ fn main() {
             forget_phone,
             reinstall_camera,
             uninstall_camera,
-            register_camera_system
+            register_camera_system,
+            approve_phone,
+            allow_firewall
         ])
         .setup(|app| {
             let handle = app.handle().clone();

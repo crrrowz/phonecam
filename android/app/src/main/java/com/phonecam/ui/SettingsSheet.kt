@@ -53,6 +53,8 @@ fun SettingsSheet(state: UiState, onApply: ((CameraSettings) -> CameraSettings) 
             Text("Stream settings", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(20.dp))
 
+            ConnectToPc(state)
+
             Section("Quality")
             if (lens != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -133,6 +135,46 @@ fun SettingsSheet(state: UiState, onApply: ((CameraSettings) -> CameraSettings) 
             Info("Encoder", state.encoder.ifEmpty { "—" })
             Info("Dropped frames", state.dropped.toString())
         }
+    }
+}
+
+/**
+ * The PC address shown in PhoneCam on the PC. The phone then dials the PC,
+ * which also works when the phone is behind a router the PC cannot reach.
+ */
+@Composable
+private fun ConnectToPc(state: UiState) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var text by remember(state.pcAddress) { androidx.compose.runtime.mutableStateOf(state.pcAddress.orEmpty()) }
+    Section("Connect to PC")
+    Text(
+        "Type the address PhoneCam shows on your PC. Leave empty to let the PC find the phone.",
+        style = MaterialTheme.typography.bodySmall, color = Palette.TextDim,
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.material3.OutlinedTextField(
+            value = text,
+            onValueChange = { text = it.trim() },
+            placeholder = { Text("192.168.100.2") },
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri),
+            modifier = Modifier.weight(1f),
+        )
+        if (state.pcAddress != null && text == state.pcAddress) {
+            Choice("Stop", false) { com.phonecam.Streamer.setPcAddress(context, null) }
+        } else {
+            Choice("Connect", true) { com.phonecam.Streamer.setPcAddress(context, text) }
+        }
+    }
+    val status = when {
+        state.pcAddress == null -> null
+        state.pc != null -> "Connected to ${state.pc}"
+        else -> state.dialStatus ?: "Connecting…"
+    }
+    if (status != null) {
+        Spacer(Modifier.height(6.dp))
+        Text(status, style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
     }
 }
 

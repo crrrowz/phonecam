@@ -44,6 +44,10 @@ data class UiState(
     val thermal: Int = 0,
     /** Set when PhoneCam lowered the quality by itself to cool the phone down. */
     val throttled: Boolean = false,
+    /** The PC this phone dials ("host" or "host:port"); null means the PC connects to the phone. */
+    val pcAddress: String? = null,
+    /** Progress or the last failure of dialling [pcAddress]. */
+    val dialStatus: String? = null,
 )
 
 /**
@@ -53,6 +57,8 @@ data class UiState(
  */
 object Streamer {
     private const val TAG = "PhoneCam.Streamer"
+    private const val PREFS = "phonecam.connection"
+    private const val KEY_PC_ADDRESS = "pc_address"
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
@@ -81,6 +87,7 @@ object Streamer {
     private var lastSentFrames = 0L
     private var lastSentBytes = 0L
     private var lastStatsAt = 0L
+    @Volatile private var dialing = false
 
     fun start(context: Context) {
         if (thread != null) return
@@ -90,7 +97,8 @@ object Streamer {
         thread = t
         val h = Handler(t.looper)
         handler = h
-        _state.update { it.copy(phase = Phase.STARTING, error = null, address = localIpv4()) }
+        val pcAddress = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PC_ADDRESS, null)
+        _state.update { it.copy(phase = Phase.STARTING, error = null, address = localIpv4(), pcAddress = pcAddress) }
         h.post {
             try {
                 val lenses = CameraCatalog.load(ctx)
@@ -108,6 +116,7 @@ object Streamer {
                 )
                 s.start()
                 server = s
+                startDialer(s)
                 engine = CameraEngine(ctx, h, onLive = { live -> _state.update { it.copy(live = live) } }, onError = ::cameraFailed)
                 startOrientation(ctx)
                 startThermal(ctx)
@@ -131,13 +140,42 @@ object Streamer {
             engine?.close(); engine = null
             relay?.release(); relay = null
             encoder?.release(); encoder = null
+            dialing = false
             server?.stop(); server = null
             done.countDown()
         }
         done.await(2, TimeUnit.SECONDS)
         thread?.quitSafely()
         thread = null; handler = null
-        _state.update { UiState(lenses = it.lenses, settings = it.settings) }
+        _state.update { UiState(lenses = it.lenses, settings = it.settings, pcAddress = it.pcAddress) }
+    }
+
+    /** Sets the PC to dial, or null to go back to waiting for the PC to connect. */
+    fun setPcAddress(context: Context, address: String?) {
+        val clean = address?.trim()?.takeIf { it.isNotEmpty() }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PC_ADDRESS, clean).apply()
+        _state.update { it.copy(pcAddress = clean, dialStatus = null) }
+    }
+
+    /**
+     * While no PC is connected, keeps dialling the PC the user entered. A PC
+     * behind the same router can still connect to the phone as before.
+     */
+    private fun startDialer(s: StreamServer) {
+        dialing = true
+        kotlin.concurrent.thread(name = "phonecam-dial", isDaemon = true) {
+            while (dialing && server === s) {
+                val target = _state.value.pcAddress
+                if (target != null && !s.connected) {
+                    val host = target.substringBeforeLast(':', target)
+                    val port = target.substringAfterLast(':', "").toIntOrNull() ?: Protocol.PC_PORT
+                    _state.update { it.copy(dialStatus = "Connecting to $host:$port…") }
+                    val error = s.dial(host, port)
+                    _state.update { it.copy(dialStatus = error?.let { e -> "$host:$port: $e" }) }
+                }
+                try { Thread.sleep(2000) } catch (_: InterruptedException) { break }
+            }
+        }
     }
 
     /** Updates settings from the UI or the PC. */

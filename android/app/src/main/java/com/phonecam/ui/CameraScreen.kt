@@ -217,7 +217,8 @@ private fun IdleArt(state: UiState) {
 private fun StatusPill(state: UiState) {
     val (color, text) = when (state.phase) {
         Phase.STREAMING -> Palette.Live to "LIVE · ${state.pc}"
-        Phase.WAITING -> Palette.Waiting to "Waiting for PC · ${state.address ?: "no Wi-Fi"}"
+        Phase.WAITING -> Palette.Waiting to (state.pcAddress?.let { "Connecting to PC · $it" }
+            ?: "Waiting for PC · ${state.address ?: "no Wi-Fi"}")
         Phase.STARTING -> Palette.TextDim to "Starting camera…"
         Phase.ERROR -> Palette.Live to (state.error ?: "Error")
         Phase.STOPPED -> Palette.TextDim to "Off"

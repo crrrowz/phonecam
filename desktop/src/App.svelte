@@ -22,6 +22,19 @@
     }
   }
 
+  let allowing = $state(false);
+
+  async function allowFirewall() {
+    allowing = true;
+    try {
+      await engine.allowFirewall();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      allowing = false;
+    }
+  }
+
   onMount(() => {
     engine.start();
   });
@@ -40,11 +53,11 @@
         <img src={logo} alt="" />
         <span>PhoneCam</span>
       </div>
-      <div class="pill" class:live class:wait={engine.phase === "pairing"}>
+      <div class="pill" class:live class:wait={engine.phase === "pairing" || !!engine.approval}>
         <span class="dot"></span>
         {#if live}
           LIVE · {engine.device ?? "Phone"}
-        {:else if engine.phase === "pairing"}
+        {:else if engine.phase === "pairing" || engine.approval}
           Waiting for approval
         {:else if engine.phase === "connecting"}
           Connecting…
@@ -82,7 +95,18 @@
         {/if}
       {:else}
         <div class="empty">
-          {#if engine.phase === "pairing"}
+          {#if engine.approval}
+            <div class="pair">
+              <div class="pair-icon"><ShieldCheck size={30} /></div>
+              <h2>Allow {engine.approval.name}?</h2>
+              <p>This phone connected from {engine.approval.address}. Allow it only if it is yours and shows the same code.</p>
+              <div class="code">{engine.approval.code.slice(0, 3)} {engine.approval.code.slice(3)}</div>
+              <div class="actions">
+                <button class="ghost" onclick={() => engine.approve(false)}>Deny</button>
+                <button class="primary" onclick={() => engine.approve(true)}>Allow</button>
+              </div>
+            </div>
+          {:else if engine.phase === "pairing"}
             <div class="pair">
               <div class="pair-icon"><ShieldCheck size={30} /></div>
               <h2>Confirm on your phone</h2>
@@ -108,6 +132,17 @@
               <li><span>2</span> Connect both to the same Wi-Fi, or plug in USB</li>
               <li><span>3</span> That's it: the camera connects by itself</li>
             </ol>
+            {#if engine.listening?.address}
+              <div class="dial">
+                <p>Phone on another network or router? In PhoneCam on the phone, connect to</p>
+                <div class="dial-address">{engine.listening.address}</div>
+                <button class="ghost small-btn" disabled={allowing} onclick={allowFirewall}>
+                  {allowing ? "…" : "Not connecting? Allow through Windows Firewall"}
+                </button>
+              </div>
+            {:else if engine.listening?.error}
+              <p class="faint small">{engine.listening.error}</p>
+            {/if}
             {#if engine.error}<p class="faint small">{engine.error}</p>{/if}
           {/if}
         </div>
@@ -392,6 +427,23 @@
   }
   .faint {
     color: var(--faint) !important;
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+  }
+  .dial {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .dial-address {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    user-select: all;
   }
   .small {
     font-size: 12.5px;
