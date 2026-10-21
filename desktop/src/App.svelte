@@ -506,13 +506,13 @@
   .topbar > .spacer {
     flex-shrink: 1;
   }
-  @media (max-width: 1180px) {
+  @media (max-width: 1440px) {
     .wide-only {
       display: none;
     }
   }
   /* Narrow windows: icon-only buttons so the top bar fits beside the side panel. */
-  @media (max-width: 1100px) {
+  @media (max-width: 1280px) {
     .btn-label {
       display: none;
     }
