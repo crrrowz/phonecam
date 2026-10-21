@@ -275,10 +275,11 @@ object Streamer {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Pipeline failed", e)
-            // The camera service restarts on its own after a crash or while another
-            // app holds the camera: retry like a camera lost mid-stream.
-            if (e is android.hardware.camera2.CameraAccessException) cameraFailed("Cannot start ${mode.label}: ${e.message}")
-            else fail("Cannot start ${mode.label}: ${e.message}")
+            // Retry like a camera lost mid-stream: the camera service restarts on
+            // its own after a crash, and a hot TECNO CK7n briefly listed no video
+            // encoder at all ("No video/avc encoder for 1920x1080") right after
+            // the thermal step-down, which used to leave the stream stopped for good.
+            cameraFailed("Cannot start ${mode.label}: ${e.message}")
         }
     }
 
