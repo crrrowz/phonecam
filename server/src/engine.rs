@@ -143,6 +143,13 @@ impl Engine {
         }
     }
 
+    /// Drops the current connection; the engine then connects again on its own.
+    pub fn reconnect(&self) {
+        if let Some(sender) = self.shared.control.lock().unwrap().as_ref() {
+            sender.send(DISCONNECT, &[]);
+        }
+    }
+
     /// Answers an `approve` event: lets a new phone that dialled in use the camera, or not.
     pub fn approve(&self, ok: bool) {
         if let Some(answer) = self.shared.approval.lock().unwrap().take() {
@@ -308,7 +315,11 @@ fn receive(
                     let kind = if v.get("lenses").is_some() { "hello" } else { "state" };
                     if kind == "hello" {
                         let name = v.get("device").and_then(Value::as_str).unwrap_or("Phone").to_string();
-                        identity::remember(&identity::Phone { fingerprint: phone_fp.clone(), name, address: reach.clone() });
+                        // A dialled-in phone reports its own address (newer apps), so
+                        // the PC can also reach it later on a network they share.
+                        let own = v.get("address").and_then(Value::as_str).and_then(|a| proto::parse_address(a).ok());
+                        let address = if dialled_in { own.unwrap_or_else(|| reach.clone()) } else { reach.clone() };
+                        identity::remember(&identity::Phone { fingerprint: phone_fp.clone(), name, address });
                     }
                     shared.emit(json!({ "event": kind, "data": v }));
                 }

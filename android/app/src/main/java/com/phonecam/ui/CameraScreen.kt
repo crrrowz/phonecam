@@ -164,7 +164,9 @@ fun CameraScreen(
             }
         }
 
-        if (settingsOpen) SettingsSheet(state, onApply) { settingsOpen = false }
+        // The sheet is its own window above this screen and would hide the
+        // pairing dialog, which the user must answer within 90 seconds.
+        if (settingsOpen && state.pairing == null) SettingsSheet(state, onApply) { settingsOpen = false }
         state.pairing?.let { PairingDialog(it) }
         if (dimmed) DimOverlay(state) { onDim(false) }
     }

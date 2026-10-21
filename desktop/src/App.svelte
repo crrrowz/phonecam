@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Cable, Cpu, MonitorPlay, Settings2, ShieldCheck, Smartphone, TriangleAlert, Wifi, Zap } from "@lucide/svelte";
+  import { Cable, Cpu, MonitorPlay, RefreshCw, Settings2, ShieldCheck, Smartphone, TriangleAlert, Wifi, Zap } from "@lucide/svelte";
   import { onMount } from "svelte";
   import CameraPanel from "./lib/CameraPanel.svelte";
   import { engine } from "./lib/engine.svelte";
@@ -19,6 +19,25 @@
       alert(String(e));
     } finally {
       fixing = false;
+    }
+  }
+
+  // Settings cover the main view, where approval and pairing are answered;
+  // both time out, so close Settings the moment one starts.
+  $effect(() => {
+    if (engine.approval || engine.phase === "pairing") settingsOpen = false;
+  });
+
+  let excluding = $state(false);
+
+  async function excludeRtss() {
+    excluding = true;
+    try {
+      await engine.excludeRtss();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      excluding = false;
     }
   }
 
@@ -70,8 +89,13 @@
       <div class="spacer"></div>
       {#if engine.listening?.address}
         <span class="pc-address" title="Type this in PhoneCam on the phone: Settings → Connect to PC">
-          <Smartphone size={14} /> Phone connects to <b>{engine.listening.address}</b>
+          <Smartphone size={14} /> <span class="wide-only">Phone connects to</span> <b>{engine.listening.address}</b>
         </span>
+      {/if}
+      {#if live || engine.phase === "connecting"}
+        <button class="ghost" onclick={() => engine.reconnect()} title="Drop the connection and connect again">
+          <RefreshCw size={16} /> Reconnect
+        </button>
       {/if}
       <button class="ghost" class:active={engine.testPattern} onclick={() => engine.toggleTestPattern()} title="Show colour bars in the virtual camera">
         <MonitorPlay size={16} /> Test camera
@@ -80,6 +104,17 @@
     </header>
 
     <section class="viewer">
+      {#if engine.rtss}
+        <div class="notice">
+          <TriangleAlert size={15} />
+          <span>
+            <b>RivaTuner (MSI Afterburner overlay) is running.</b> Its overlay can crash this window and leave it black. <b>Fix</b> turns
+            the overlay off for <code>msedgewebview2.exe</code> (one administrator prompt), as RivaTuner's "Application detection level:
+            None" does. Restart RivaTuner afterwards. The virtual camera is not affected either way.
+          </span>
+          <button class="primary small-btn" disabled={excluding} onclick={excludeRtss}>{excluding ? "…" : "Fix"}</button>
+        </div>
+      {/if}
       <Preview active={live} />
       {#if live}
         <div class="overlay top">
@@ -433,6 +468,25 @@
   .faint {
     color: var(--faint) !important;
   }
+  .notice {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 3;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--panel-2);
+    color: var(--dim);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .notice b {
+    color: var(--text);
+  }
   .pc-address {
     display: flex;
     align-items: center;
@@ -440,6 +494,18 @@
     color: var(--dim);
     font-size: 13px;
     user-select: text;
+  }
+  .topbar > :global(*) {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .topbar > .spacer {
+    flex-shrink: 1;
+  }
+  @media (max-width: 1180px) {
+    .wide-only {
+      display: none;
+    }
   }
   .pc-address b {
     font-family: var(--mono);

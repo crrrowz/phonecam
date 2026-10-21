@@ -82,6 +82,14 @@ object CameraCatalog {
             }
             lens.copy(name = name)
         }.sortedBy { listOf("Main", "Ultra-wide", "Telephoto", "Front").indexOf(it.name) }
+            // Some phones expose two front (or tele) cameras, e.g. ids 1 and 3 on a
+            // Galaxy S21+: number the repeats so both UIs can tell them apart.
+            .let { named ->
+                named.mapIndexed { i, lens ->
+                    val earlier = named.take(i).count { it.name == lens.name }
+                    if (earlier == 0) lens else lens.copy(name = "${lens.name} ${earlier + 1}")
+                }
+            }
     }
 
     private fun describe(id: String, c: CameraCharacteristics): Lens? {

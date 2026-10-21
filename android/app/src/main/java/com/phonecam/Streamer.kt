@@ -360,7 +360,7 @@ object Streamer {
             OrientationLock.LANDSCAPE -> lastLandscape
             OrientationLock.PORTRAIT -> 0
         }
-        val base = if (baseRotation >= 0) baseRotation else lens.sensorOrientation
+        val base = com.phonecam.stream.Orientation.resolveBase(baseRotation, lens.sensorOrientation, lens.front)
         rotation = com.phonecam.stream.Orientation.streamRotation(base, device, lens.front)
     }
 
@@ -369,6 +369,9 @@ object Streamer {
         .put("device", Build.MODEL)
         .put("manufacturer", Build.MANUFACTURER)
         .put("android", Build.VERSION.RELEASE)
+        // Where the PC can connect back, also when this phone dialled it
+        // and the PC only saw the router's address.
+        .put("address", localIpv4()?.let { "$it:${Protocol.PORT}" } ?: JSONObject.NULL)
         .put("lenses", JSONArray(_state.value.lenses.map { it.toJson() }))
         .put("state", stateJson())
 

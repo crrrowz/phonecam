@@ -85,6 +85,8 @@ class EngineStore {
   listening = $state<{ address: string | null; port: number; error?: string } | null>(null);
   /** A new phone that dialled in and waits to be allowed. */
   approval = $state<{ name: string; code: string; address: string } | null>(null);
+  /** RivaTuner (MSI Afterburner's overlay) is running; its hook crashes the preview. */
+  rtss = $state(false);
 
   private heldUntil = new Map<string, number>();
   private pending: Partial<Settings> = {};
@@ -128,6 +130,17 @@ class EngineStore {
     return ok;
   }
 
+  /** Turns RivaTuner's overlay off for WebView2; hides the warning once it worked. */
+  async excludeRtss() {
+    await invoke("exclude_rtss");
+    this.rtss = false;
+  }
+
+  /** Drops the current connection and connects again, to the same pinned address if any. */
+  reconnect() {
+    return invoke("reconnect");
+  }
+
   approve(ok: boolean) {
     this.approval = null;
     return invoke("approve_phone", { ok });
@@ -155,6 +168,9 @@ class EngineStore {
         this.phase = "pairing";
         this.pairingCode = e.code;
         this.pairingMismatch = e.mismatch;
+        break;
+      case "rtss":
+        this.rtss = true;
         break;
       case "approve":
         this.approval = { name: e.name, code: e.code, address: e.address };
