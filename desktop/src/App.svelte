@@ -70,7 +70,7 @@
     <header class="topbar">
       <div class="brand">
         <img src={logo} alt="" />
-        <span>PhoneCam</span>
+        <span class="btn-label">PhoneCam</span>
       </div>
       <div class="pill" class:live class:wait={engine.phase === "pairing" || !!engine.approval}>
         <span class="dot"></span>
@@ -94,11 +94,11 @@
       {/if}
       {#if live || engine.phase === "connecting"}
         <button class="ghost" onclick={() => engine.reconnect()} title="Drop the connection and connect again">
-          <RefreshCw size={16} /> Reconnect
+          <RefreshCw size={16} /> <span class="btn-label">Reconnect</span>
         </button>
       {/if}
       <button class="ghost" class:active={engine.testPattern} onclick={() => engine.toggleTestPattern()} title="Show colour bars in the virtual camera">
-        <MonitorPlay size={16} /> Test camera
+        <MonitorPlay size={16} /> <span class="btn-label">Test camera</span>
       </button>
       <button class="icon" onclick={() => (settingsOpen = true)} title="Settings"><Settings2 size={18} /></button>
     </header>
@@ -242,6 +242,8 @@
   }
   .stage {
     display: grid;
+    /* minmax(0, 1fr): a wide top bar must never push the stage under the side panel. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr auto;
     gap: 14px;
     padding: 14px 16px 16px 18px;
@@ -253,6 +255,8 @@
     align-items: center;
     gap: 12px;
     height: 40px;
+    min-width: 0;
+    overflow: hidden;
   }
   .brand {
     display: flex;
@@ -504,6 +508,12 @@
   }
   @media (max-width: 1180px) {
     .wide-only {
+      display: none;
+    }
+  }
+  /* Narrow windows: icon-only buttons so the top bar fits beside the side panel. */
+  @media (max-width: 1100px) {
+    .btn-label {
       display: none;
     }
   }
