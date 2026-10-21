@@ -15,6 +15,9 @@
 
 ## 🔭 Next
 
+- [ ] Device reliability: runtime self-checks, device reports, quirks table and an automated per-phone test matrix: see the [plan](docs/plans/device-reliability.md)
+- [ ] Portrait (background blur) through Camera2 Extensions (`BOKEH`), done on the phone with no PC cost, where the phone supports it
+
 - [ ] Media Foundation virtual camera (Windows 11) for apps that only use Media Foundation (Windows Camera, Discord, Zoom, Teams): see the [plan](docs/plans/media-foundation-camera.md)
 - [ ] Microphone streaming
 - [ ] One-click USB mode (`adb forward`, tethering as fallback): see the [plan](docs/plans/usb-connection.md)
