@@ -68,6 +68,11 @@
         {/if}
       </div>
       <div class="spacer"></div>
+      {#if engine.listening?.address}
+        <span class="pc-address" title="Type this in PhoneCam on the phone: Settings → Connect to PC">
+          <Smartphone size={14} /> Phone connects to <b>{engine.listening.address}</b>
+        </span>
+      {/if}
       <button class="ghost" class:active={engine.testPattern} onclick={() => engine.toggleTestPattern()} title="Show colour bars in the virtual camera">
         <MonitorPlay size={16} /> Test camera
       </button>
@@ -427,6 +432,19 @@
   }
   .faint {
     color: var(--faint) !important;
+  }
+  .pc-address {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--dim);
+    font-size: 13px;
+    user-select: text;
+  }
+  .pc-address b {
+    font-family: var(--mono);
+    color: var(--text);
+    user-select: all;
   }
   .actions {
     display: flex;
