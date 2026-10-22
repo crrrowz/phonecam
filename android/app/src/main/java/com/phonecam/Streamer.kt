@@ -378,16 +378,24 @@ object Streamer {
      * with a frozen stream; after overheating, only once the phone has cooled.
      */
     private fun cameraFailed(message: String) {
+        val h = handler ?: return fail(message)
+        val hot = _state.value.thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE
+        if (hot) {
+            // A hot phone may refuse the camera or the encoder outright (a TECNO
+            // CK7n at SEVERE listed no video encoder at all), and only cooling
+            // helps: wait for it without a retry limit, saying why.
+            fail("Phone is too hot, waiting for it to cool down. Streaming resumes at 1080p 30 by itself. ($message)")
+            coolDown(reopen = false)
+            h.postDelayed({ if (handler != null && _state.value.phase == Phase.ERROR) openPipeline() }, 15_000L)
+            return
+        }
         fail(message)
-        val h = handler ?: return
         // Counts failures since the stream last ran (tick resets it). A crashed
         // camera service takes 5-10 s to come back, so the waits grow: 2, 4, 6,
         // 8 and 10 s, about 30 s in all before giving up.
         if (recoveries >= 5) return
         recoveries++
-        val hot = _state.value.thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE
-        if (hot) coolDown(reopen = false)
-        h.postDelayed({ if (handler != null && _state.value.phase == Phase.ERROR) openPipeline() }, if (hot) 15_000L else 2_000L * recoveries)
+        h.postDelayed({ if (handler != null && _state.value.phase == Phase.ERROR) openPipeline() }, 2_000L * recoveries)
     }
 
     /** Steps down to the cheapest good-looking mode: 1080p30, manual controls intact. */
@@ -410,6 +418,11 @@ object Streamer {
             handler?.post {
                 _state.update { it.copy(thermal = status) }
                 if (status >= android.os.PowerManager.THERMAL_STATUS_SEVERE) coolDown()
+                else if (_state.value.phase == Phase.ERROR && engine != null) {
+                    // Cooled down while stopped: start again now, with fresh retries.
+                    recoveries = 0
+                    openPipeline()
+                }
                 server?.sendState(stateJson())
             }
         }
